@@ -1,0 +1,31 @@
+name: Expiry digest (hourly)
+
+# Runs every hour so each user's digest fires at their chosen local hour.
+# The request also keeps the free-tier Supabase project from pausing.
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Send now regardless of hour (testing)
+        type: boolean
+        default: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    if: ${{ vars.DIGEST_ENABLED != 'false' }}
+    steps:
+      - name: Call daily-digest
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Supabase not configured; skipping."; exit 0
+          fi
+          url="$SUPABASE_URL/functions/v1/daily-digest"
+          [ "$FORCE" = "true" ] && url="$url?force=1"
+          curl -sS -f -X POST "$url" -H "x-cron-secret: $CRON_SECRET" -H "Content-Type: application/json" -d '{}'

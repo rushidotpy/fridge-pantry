@@ -1,0 +1,17 @@
+# Supabase CLI project config. Only the parts that matter for deploying functions.
+project_id = "fridge-pantry"
+
+[functions.scan-label]
+verify_jwt = true
+
+[functions.suggest-recipes]
+verify_jwt = true
+
+# Apple Calendar cannot send an Authorization header; the feed is protected by
+# the per-user calendar_token in the query string instead.
+[functions.calendar-feed]
+verify_jwt = false
+
+# Triggered by GitHub Actions with an x-cron-secret header.
+[functions.daily-digest]
+verify_jwt = false
