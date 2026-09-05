@@ -179,7 +179,7 @@ export function SignIn() {
               <Mail className="mx-auto mb-2 size-6" />
               Email sent to <strong>{email}</strong>.
               <p className="mt-2 text-emerald-900/80 dark:text-emerald-100/80">
-                Do not tap the blue link — that opens Safari and this app stays logged out. Long-press <strong>Sign in</strong>, tap Copy, then paste it below.
+                Use only the <strong>newest</strong> email. Older Sign in links in the same thread are already dead. Long-press that newest <strong>Sign in</strong>, Copy, paste below. Do not tap Request again after you have it.
               </p>
             </div>
             <form onSubmit={(e) => void openPastedLink(e)} className="space-y-3">
