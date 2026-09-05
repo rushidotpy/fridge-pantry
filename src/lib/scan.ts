@@ -13,7 +13,7 @@ export interface ScanResult {
 }
 
 const LOCAL_KEY = 'fridge-pantry:gemini-key'
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash'
 
 export function getLocalGeminiKey(): string {
   return localStorage.getItem(LOCAL_KEY) ?? ''

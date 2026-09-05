@@ -1,24 +1,40 @@
 import { useState, type FormEvent } from 'react'
 import { Mail, Refrigerator } from 'lucide-react'
+import { requestPersistentStorage } from '../lib/authStorage'
+import { isIOS, isStandalone } from '../lib/push'
 import { supabase } from '../lib/supabase'
 
 export function SignIn() {
   const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const homeScreen = isIOS() && isStandalone()
 
-  async function submit(e: FormEvent) {
+  async function sendLink(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
     setErr(null)
+    requestPersistentStorage()
     const { error } = await supabase().auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+      options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL, shouldCreateUser: true },
     })
     setBusy(false)
     if (error) setErr(error.message)
     else setSent(true)
+  }
+
+  async function verifyCode(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setErr(null)
+    requestPersistentStorage()
+    const token = code.replace(/\s/g, '')
+    const { error } = await supabase().auth.verifyOtp({ email, token, type: 'email' })
+    setBusy(false)
+    if (error) setErr(error.message)
   }
 
   return (
@@ -33,12 +49,45 @@ export function SignIn() {
         </p>
 
         {sent ? (
-          <div className="mt-8 rounded-2xl bg-emerald-50 p-5 text-center text-sm text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900">
-            <Mail className="mx-auto mb-2 size-6" />
-            Check <strong>{email}</strong> for a sign-in link. Open it on this device.
+          <div className="mt-8 space-y-4">
+            <div className="rounded-2xl bg-emerald-50 p-5 text-center text-sm text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900">
+              <Mail className="mx-auto mb-2 size-6" />
+              Check <strong>{email}</strong> for a sign-in email.
+              {homeScreen ? (
+                <p className="mt-2 text-emerald-900/80 dark:text-emerald-100/80">
+                  On iPhone the link often opens Safari instead of this app. Come back here and type the code from the email — that keeps you signed in on the Home Screen.
+                </p>
+              ) : (
+                <p className="mt-2">Open the link on this device, or enter the code from the email below.</p>
+              )}
+            </div>
+            <form onSubmit={verifyCode} className="space-y-3">
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+                autoFocus
+                placeholder="Code from the email"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full rounded-xl border-0 bg-white px-4 py-3 text-center tracking-[0.3em] shadow-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:ring-slate-700"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-xl bg-brand-700 px-4 py-3 font-medium text-white shadow-sm transition active:scale-[.98] disabled:opacity-60"
+              >
+                {busy ? 'Signing in…' : 'Sign in with code'}
+              </button>
+              {err && <p className="text-center text-sm text-red-600">{err}</p>}
+            </form>
+            <button type="button" className="w-full text-center text-xs text-slate-500" onClick={() => { setSent(false); setErr(null) }}>
+              Use a different email
+            </button>
           </div>
         ) : (
-          <form onSubmit={submit} className="mt-8 space-y-3">
+          <form onSubmit={sendLink} className="mt-8 space-y-3">
             <input
               type="email"
               required
@@ -53,7 +102,7 @@ export function SignIn() {
               disabled={busy}
               className="w-full rounded-xl bg-brand-700 px-4 py-3 font-medium text-white shadow-sm transition active:scale-[.98] disabled:opacity-60"
             >
-              {busy ? 'Sending…' : 'Send sign-in link'}
+              {busy ? 'Sending…' : 'Send sign-in email'}
             </button>
             {err && <p className="text-center text-sm text-red-600">{err}</p>}
           </form>

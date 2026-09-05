@@ -10,7 +10,12 @@ declare let self: ServiceWorkerGlobalScope
 precacheAndRoute(self.__WB_MANIFEST)
 cleanupOutdatedCaches()
 
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html')))
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('index.html'), {
+    // Let the auth callback hit the network so ?code= / ?token= are not swallowed.
+    denylist: [/[?&]code=/, /[?&]token=/],
+  }),
+)
 
 registerRoute(
   ({ url }) => url.pathname.includes('/storage/v1/object/public/'),

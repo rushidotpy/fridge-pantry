@@ -14,9 +14,30 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!cloudEnabled) return
     const sb = supabase()
-    sb.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => sub.subscription.unsubscribe()
+
+    const { data: sub } = sb.auth.onAuthStateChange((event, next) => {
+      // A failed background refresh can emit TOKEN_REFRESHED with no session.
+      // Don't bounce the Home Screen app to the login screen for that.
+      if (event === 'TOKEN_REFRESHED' && !next) return
+      setSession(next)
+    })
+
+    const restore = () => {
+      void sb.auth.getSession().then(({ data }) => {
+        if (data.session) setSession(data.session)
+      })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') restore()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pageshow', restore)
+
+    return () => {
+      sub.subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pageshow', restore)
+    }
   }, [])
 
   const store = useMemo(() => {

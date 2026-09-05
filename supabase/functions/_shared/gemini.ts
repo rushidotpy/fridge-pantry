@@ -1,5 +1,5 @@
 const API_KEY = Deno.env.get('GEMINI_API_KEY')
-const MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'
+const MODEL = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.6-flash'
 
 export type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } }
 
