@@ -64,6 +64,10 @@ function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean
 
 function SyncCard() {
   const [email, setEmail] = useState<string | null>(null)
+  const [password, setPassword] = useState('')
+  const [pwBusy, setPwBusy] = useState(false)
+  const [pwMsg, setPwMsg] = useState<string | null>(null)
+  const [pwErr, setPwErr] = useState<string | null>(null)
   useEffect(() => {
     if (cloudEnabled) supabase().auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null))
   }, [])
@@ -92,6 +96,40 @@ function SyncCard() {
         </Button>
       </div>
       <p className="text-xs text-slate-500">Sign in with the same email on every device and the list stays in sync in real time.</p>
+      <form
+        className="space-y-2"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setPwBusy(true)
+          setPwMsg(null)
+          setPwErr(null)
+          const { error } = await supabase().auth.updateUser({ password })
+          setPwBusy(false)
+          if (error) setPwErr(error.message)
+          else {
+            setPassword('')
+            setPwMsg('Password saved. Use it the next time this app asks you to sign in.')
+          }
+        }}
+      >
+        <div className="font-medium">Password for this Home Screen app</div>
+        <p className="text-xs text-slate-500">Set one so iPhone does not depend on the email link (that link opens Safari).</p>
+        <input
+          type="password"
+          required
+          minLength={6}
+          autoComplete="new-password"
+          placeholder="New password (6+ characters)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={inputCls}
+        />
+        <Button type="submit" variant="secondary" disabled={pwBusy}>
+          {pwBusy ? 'Saving…' : 'Save password'}
+        </Button>
+        {pwMsg && <p className="text-xs text-emerald-700 dark:text-emerald-300">{pwMsg}</p>}
+        {pwErr && <p className="text-xs text-red-600">{pwErr}</p>}
+      </form>
     </Card>
   )
 }

@@ -6,10 +6,13 @@ import { supabase } from '../lib/supabase'
 
 const RESEND_SECONDS = 60
 
+type Mode = 'password' | 'link' | 'paste'
+
 export function SignIn() {
+  const [mode, setMode] = useState<Mode>('password')
   const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [link, setLink] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -22,25 +25,58 @@ export function SignIn() {
     return () => window.clearTimeout(t)
   }, [cooldown])
 
-  async function sendEmail() {
+  function resetMessages() {
+    setErr(null)
+    setNotice(null)
+  }
+
+  async function sendMagicLink() {
     requestPersistentStorage()
     const { error } = await supabase().auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL, shouldCreateUser: true },
     })
     if (error) throw error
-    setSent(true)
     setCooldown(RESEND_SECONDS)
-    setNotice('A new email is on its way.')
+    setMode('paste')
+    setNotice('Email sent. Long-press the Sign in link, copy it, and paste it below.')
   }
 
-  async function sendLink(e: FormEvent) {
+  async function onPassword(action: 'in' | 'up') {
+    setBusy(true)
+    resetMessages()
+    requestPersistentStorage()
+    try {
+      const sb = supabase()
+      const { error } =
+        action === 'in'
+          ? await sb.auth.signInWithPassword({ email, password })
+          : await sb.auth.signUp({ email, password })
+      if (error) throw error
+      if (action === 'up') {
+        const { data } = await sb.auth.getSession()
+        if (!data.session) {
+          setNotice('Account created. If you are not signed in yet, use “Email me a link” once, then set a password in Settings.')
+        }
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/invalid login credentials/i.test(msg)) {
+        setErr('Wrong email or password. If you have never set a password, create one with “Create account”, or use the email link once.')
+      } else {
+        setErr(msg)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSendLink(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    setErr(null)
-    setNotice(null)
+    resetMessages()
     try {
-      await sendEmail()
+      await sendMagicLink()
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -51,10 +87,9 @@ export function SignIn() {
   async function requestAgain() {
     if (cooldown > 0 || busy) return
     setBusy(true)
-    setErr(null)
-    setNotice(null)
+    resetMessages()
     try {
-      await sendEmail()
+      await sendMagicLink()
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -62,22 +97,23 @@ export function SignIn() {
     }
   }
 
-  async function verifyCode(e: FormEvent) {
+  function openPastedLink(e: FormEvent) {
     e.preventDefault()
-    setBusy(true)
-    setErr(null)
-    setNotice(null)
-    requestPersistentStorage()
-    const token = code.replace(/\s/g, '')
-    if (/^https?:\/\//i.test(token)) {
-      // Opening the email link inside this app keeps the session here, not in Safari.
-      window.location.assign(token)
+    const url = link.trim()
+    if (!/^https?:\/\//i.test(url)) {
+      setErr('Paste the full Sign in link from the email.')
       return
     }
-    const { error } = await supabase().auth.verifyOtp({ email, token, type: 'email' })
-    setBusy(false)
-    if (error) setErr(error.message)
+    requestPersistentStorage()
+    window.location.assign(url)
   }
+
+  const fieldCls =
+    'w-full rounded-xl border-0 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:ring-slate-700'
+  const primaryCls =
+    'w-full rounded-xl bg-brand-700 px-4 py-3 font-medium text-white shadow-sm transition active:scale-[.98] disabled:opacity-60'
+  const secondaryCls =
+    'w-full rounded-xl bg-white px-4 py-3 font-medium text-brand-800 shadow-sm ring-1 ring-slate-200 transition active:scale-[.98] disabled:opacity-60 dark:bg-slate-900 dark:text-teal-200 dark:ring-slate-700'
 
   return (
     <div className="safe-top safe-bottom flex min-h-full flex-col items-center justify-center px-6 py-12">
@@ -87,48 +123,78 @@ export function SignIn() {
         </div>
         <h1 className="text-center text-2xl font-semibold tracking-tight">Fridge &amp; Pantry</h1>
         <p className="mt-2 text-center text-sm text-slate-500">
-          Sign in with your email. The same list shows on every device you sign into.
+          {homeScreen
+            ? 'Use an email and password so this Home Screen app stays signed in. The email link opens Safari and does not count.'
+            : 'Sign in with the same email on every device and the list stays in sync.'}
         </p>
 
-        {sent ? (
+        {mode === 'password' && (
+          <form className="mt-8 space-y-3" onSubmit={(e) => { e.preventDefault(); void onPassword('in') }}>
+            <input type="email" required autoFocus autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldCls} />
+            <input type="password" required autoComplete="current-password" minLength={6} placeholder="Password (6+ characters)" value={password} onChange={(e) => setPassword(e.target.value)} className={fieldCls} />
+            <button type="submit" disabled={busy} className={primaryCls}>
+              {busy ? 'Signing in…' : 'Sign in'}
+            </button>
+            <button type="button" disabled={busy} className={secondaryCls} onClick={() => void onPassword('up')}>
+              Create account
+            </button>
+            {notice && <p className="text-center text-sm text-emerald-700 dark:text-emerald-300">{notice}</p>}
+            {err && <p className="text-center text-sm text-red-600">{err}</p>}
+            <button
+              type="button"
+              className="w-full text-center text-xs text-slate-500"
+              onClick={() => {
+                resetMessages()
+                setMode('link')
+              }}
+            >
+              Email me a link instead
+            </button>
+          </form>
+        )}
+
+        {mode === 'link' && (
+          <form onSubmit={(e) => void onSendLink(e)} className="mt-8 space-y-3">
+            <p className="text-center text-sm text-slate-500">
+              The email only has a link — there is no code. After it arrives, come back here and paste the link.
+            </p>
+            <input type="email" required autoFocus autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={fieldCls} />
+            <button type="submit" disabled={busy} className={primaryCls}>
+              {busy ? 'Sending…' : 'Send sign-in email'}
+            </button>
+            {err && <p className="text-center text-sm text-red-600">{err}</p>}
+            <button type="button" className="w-full text-center text-xs text-slate-500" onClick={() => { resetMessages(); setMode('password') }}>
+              Use a password instead
+            </button>
+          </form>
+        )}
+
+        {mode === 'paste' && (
           <div className="mt-8 space-y-4">
             <div className="rounded-2xl bg-emerald-50 p-5 text-center text-sm text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:ring-emerald-900">
               <Mail className="mx-auto mb-2 size-6" />
-              Check <strong>{email}</strong> for a sign-in email.
-              {homeScreen ? (
-                <p className="mt-2 text-emerald-900/80 dark:text-emerald-100/80">
-                  On iPhone the link often opens Safari instead of this app. Type the 6-digit code, or long-press the link, copy it, and paste it below.
-                </p>
-              ) : (
-                <p className="mt-2">Enter the 6-digit code from the email, or paste the sign-in link.</p>
-              )}
+              Email sent to <strong>{email}</strong>.
+              <p className="mt-2 text-emerald-900/80 dark:text-emerald-100/80">
+                Do not tap the blue link — that opens Safari and this app stays logged out. Long-press <strong>Sign in</strong>, tap Copy, then paste it below.
+              </p>
             </div>
-            <form onSubmit={verifyCode} className="space-y-3">
+            <form onSubmit={openPastedLink} className="space-y-3">
               <input
-                type="text"
-                inputMode="text"
-                autoComplete="one-time-code"
+                type="url"
                 required
                 autoFocus
-                placeholder="6-digit code or paste the link"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="w-full rounded-xl border-0 bg-white px-4 py-3 text-center shadow-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:ring-slate-700"
+                inputMode="url"
+                autoComplete="off"
+                placeholder="Paste the Sign in link here"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                className={fieldCls}
               />
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full rounded-xl bg-brand-700 px-4 py-3 font-medium text-white shadow-sm transition active:scale-[.98] disabled:opacity-60"
-              >
-                {busy ? 'Signing in…' : 'Sign in'}
+              <button type="submit" disabled={busy} className={primaryCls}>
+                Sign in with pasted link
               </button>
-              <button
-                type="button"
-                disabled={busy || cooldown > 0}
-                onClick={() => void requestAgain()}
-                className="w-full rounded-xl bg-white px-4 py-3 font-medium text-brand-800 shadow-sm ring-1 ring-slate-200 transition active:scale-[.98] disabled:opacity-60 dark:bg-slate-900 dark:text-teal-200 dark:ring-slate-700"
-              >
-                {cooldown > 0 ? `Request code again in ${cooldown}s` : 'Request code again'}
+              <button type="button" disabled={busy || cooldown > 0} onClick={() => void requestAgain()} className={secondaryCls}>
+                {cooldown > 0 ? `Request email again in ${cooldown}s` : 'Request email again'}
               </button>
               {notice && <p className="text-center text-sm text-emerald-700 dark:text-emerald-300">{notice}</p>}
               {err && <p className="text-center text-sm text-red-600">{err}</p>}
@@ -137,35 +203,14 @@ export function SignIn() {
               type="button"
               className="w-full text-center text-xs text-slate-500"
               onClick={() => {
-                setSent(false)
-                setErr(null)
-                setNotice(null)
-                setCode('')
+                resetMessages()
+                setLink('')
+                setMode('password')
               }}
             >
-              Use a different email
+              Use a password instead
             </button>
           </div>
-        ) : (
-          <form onSubmit={sendLink} className="mt-8 space-y-3">
-            <input
-              type="email"
-              required
-              autoFocus
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border-0 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200 outline-none focus:ring-2 focus:ring-brand-500 dark:bg-slate-900 dark:ring-slate-700"
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-xl bg-brand-700 px-4 py-3 font-medium text-white shadow-sm transition active:scale-[.98] disabled:opacity-60"
-            >
-              {busy ? 'Sending…' : 'Send sign-in email'}
-            </button>
-            {err && <p className="text-center text-sm text-red-600">{err}</p>}
-          </form>
         )}
       </div>
     </div>
