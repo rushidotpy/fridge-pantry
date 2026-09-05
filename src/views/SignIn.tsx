@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Mail, Refrigerator } from 'lucide-react'
+import { signInWithPastedLink } from '../lib/authLink'
 import { requestPersistentStorage } from '../lib/authStorage'
 import { isIOS, isStandalone } from '../lib/push'
 import { supabase } from '../lib/supabase'
@@ -97,15 +98,18 @@ export function SignIn() {
     }
   }
 
-  function openPastedLink(e: FormEvent) {
+  async function openPastedLink(e: FormEvent) {
     e.preventDefault()
-    const url = link.trim()
-    if (!/^https?:\/\//i.test(url)) {
-      setErr('Paste the full Sign in link from the email.')
-      return
-    }
+    setBusy(true)
+    resetMessages()
     requestPersistentStorage()
-    window.location.assign(url)
+    try {
+      await signInWithPastedLink(link)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   const fieldCls =
@@ -178,7 +182,7 @@ export function SignIn() {
                 Do not tap the blue link — that opens Safari and this app stays logged out. Long-press <strong>Sign in</strong>, tap Copy, then paste it below.
               </p>
             </div>
-            <form onSubmit={openPastedLink} className="space-y-3">
+            <form onSubmit={(e) => void openPastedLink(e)} className="space-y-3">
               <input
                 type="url"
                 required
@@ -191,7 +195,7 @@ export function SignIn() {
                 className={fieldCls}
               />
               <button type="submit" disabled={busy} className={primaryCls}>
-                Sign in with pasted link
+                {busy ? 'Signing in…' : 'Sign in with pasted link'}
               </button>
               <button type="button" disabled={busy || cooldown > 0} onClick={() => void requestAgain()} className={secondaryCls}>
                 {cooldown > 0 ? `Request email again in ${cooldown}s` : 'Request email again'}
